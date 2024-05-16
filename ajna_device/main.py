@@ -66,7 +66,7 @@ def do_listen():
             return "Could not request results from Google Speech Recognition service;"
 
 # Configure the AI assistant
-genai.configure(api_key="AIzaSyANF58fvFynlOZM1DzXpWoUmin6UV99mcI")
+genai.configure(api_key=GOOGLE_API_KEY)
 
 # Set up the model
 generation_config = {
