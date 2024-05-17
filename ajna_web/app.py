@@ -10,7 +10,7 @@ from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, storage
-
+import cv2
 
 import pyttsx3 as p
 import speech_recognition as sr
@@ -37,7 +37,8 @@ app = Flask(_name_)
 app.secret_key = 'ajnakey'  # Necessary for using session
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+genai.configure(api_key="AIzaSyANF58fvFynlOZM1DzXpWoUmin6UV99mcI")
+# genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 UPLOAD_FOLDER = './uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -64,17 +65,19 @@ def download_file(cloud_file_name, local_file_path):
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    if 'file' not in request.files:
-        return 'No file part'
-    file = request.files['file']
-    if file.filename == '':
-        return 'No selected file'
-    if file:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
-        upload_file(file_path, file.filename)  # Upload the file to Firebase Storage
-        session['uploaded_file_name'] = file.filename
-        return redirect(url_for('proceed'))
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file part'
+        file = request.files['file']
+        if file.filename == '':
+            return 'No selected file'
+        if file:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+            file.save(file_path)
+            upload_file(file_path, file.filename)  # Upload the file to Firebase Storage
+            session['uploaded_file_name'] = file.filename
+            return redirect(url_for('home'))
+    return redirect(url_for('home'))
 
 def get_pdf_text(pdf_path):
     text = ""
@@ -126,7 +129,7 @@ def proceed():
     raw_text = get_pdf_text(local_file_path)
     text_chunks = get_text_chunks(raw_text)
     get_vector_store(text_chunks)
-    return redirect(url_for('conversate'))
+    return redirect(url_for('proceed'))
 
 genai.configure(api_key="AIzaSyANF58fvFynlOZM1DzXpWoUmin6UV99mcI")
 
@@ -180,76 +183,59 @@ def conversate():
         report = user_input(user_question)
         system_instruction = f"""You are Ajna, an intelligent dietary advisor designed to assist users in making informed dietary choices. When a user presents a food object to you, follow these steps: identify the food item, analyze its nutritional content, and determine its suitability for consumption based on this user medical report {report}. Provide detailed nutritional information, including macronutrients and micronutrients. Offer a clear and concise recommendation on whether the user should consume the food, and explain your reasoning briefly based on the food's nutritional content and potential health impacts. Ensure your responses are short and to the point, focusing on guiding the user in maintaining a healthy diet, avoiding negative health effects, and making well-informed dietary decisions. what ever  question the user  ask you  analyse the report of the user and answer based on the medical report given  and always be consise and never give lengthy replies."""
         response=reason(user_question)
-    return render_template('conversate.html',response=response)
+    return render_template('index.html',response=response)
+
+# --------------------------------------------------------------camera part ---------------------------------
+def capture_image(camera_index=0, image_path="captured_image.jpg"):
+    # Open the camera
+    cap = cv2.VideoCapture(camera_index)
+
+    # Check if the camera is opened successfully
+    if not cap.isOpened():
+        print("Error: Unable to open camera")
+        return
+
+    # Create a window to display the video feed
+    cv2.namedWindow("Video Feed", cv2.WINDOW_NORMAL)
+
+    while True:
+        # Read a frame from the camera
+        ret, frame = cap.read()
+
+        # Check if the frame is read successfully
+        if not ret:
+            print("Error: Unable to capture frame")
+            break
+
+        # Display the frame
+        cv2.imshow("Video Feed", frame)
+
+        # Check for key press
+        key = cv2.waitKey(1)
+
+        # Capture image when space key is pressed
+        if key == 32:  # 32 is the ASCII code for space key
+            # Save the captured image
+            cv2.imwrite(image_path, frame)
+            print(f"Image captured and saved to {image_path}")
+
+        # Break the loop if the 'q' key is pressed
+        if key == ord('q'):
+            break
+
+    # Release the camera and destroy all OpenCV windows
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+@app.route('/capture_image', methods=['POST'])
+def capture_image_route():
+    capture_image()
+    return redirect(url_for('home'))
+
+
+
 
 if _name_ == '_main_':
     app.run(debug=True)
 
-
-
-
-
-# system_instruction = """You are Ajna, an intelligent dietary advisor designed to assist users in making informed dietary choices. When a user presents a food object to you, follow these steps: identify the food item, analyze its nutritional content, and determine its suitability for consumption based on general health guidelines. Provide detailed nutritional information, including macronutrients and micronutrients. Offer a clear and concise recommendation on whether the user should consume the food, and explain your reasoning briefly based on the food's nutritional content and potential health impacts. Ensure your responses are short and to the point, focusing on guiding the user in maintaining a healthy diet, avoiding negative health effects, and making well-informed dietary decisions."""
-
-
-
-
-system_instruction2 = """You are an intelligent text processor designed to identify food items in a given sentence. Your task is to analyze the sentence, identify and extract the names of any food items or objects that are edible (such as fruits, vegetables, or any other food items), and return only the names of these food items."""
-
-API_URL = "https://api-inference.huggingface.co/models/microsoft/git-base"
-headers = {"Authorization": "Bearer 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"}
-
-def query(filename):
-    with open(filename, "rb") as f:
-        data = f.read()
-    response = requests.post(API_URL, headers=headers, data=data)
-    response_json = response.json()
-    print(response_json[0]["generated_text"])
-    return (response_json[0]["generated_text"])
-
-
-def clean_text(text):
-    # Remove ** and any other unwanted symbols
-    cleaned_text = re.sub(r"[*_~`]", "", text)
-    return cleaned_text
-
-
-def speak(text):
-    cleaned_text = clean_text(text)
-    engine.say(cleaned_text)
-    engine.runAndWait()
-
-
-def do_listen():
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        # Adjust for ambient noise and energy threshold
-        recognizer.adjust_for_ambient_noise(source, duration=1)
-        recognizer.energy_threshold = 400  # Adjust this threshold as needed
-        print("Listening...")
-        audio = recognizer.listen(source)
-        
-        try:
-            text = recognizer.recognize_google(audio)
-            print("User:", text)
-            return text.lower()
-        except sr.UnknownValueError:
-            print("Sorry, I didn't catch that.")
-            return "Sorry, I didn't catch that."
-        except sr.RequestError as e:
-            print("Could not request results from Google Speech Recognition service; {0}".format(e))
-            return "Could not request results from Google Speech Recognition service;"
-
-# Configure the AI assistant
-
-# Object detection function
-def detectobject(input_text, system_instruction2):
-    model = genai.GenerativeModel(model_name="gemini-1.5-pro-latest",
-                                  generation_config=generation_config,
-                                  system_instruction=system_instruction2,
-                                  safety_settings=safety_settings)
-    convo = model.start_chat(history=[
-    ])
-    convo.send_message(input_text)
-    detected = convo.last.text
-    return detected
